@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "node server/index.js",
-    "dev:client": "npx vite --root client --port 5173",
-    "build": "npx vite build --root client --outDir dist --emptyOutDir",
+    "dev:client": "npx vite client --port 5173",
+    "build": "npx vite build client --outDir dist --emptyOutDir",
     "start": "node server/index.js",
     "preview": "npm run build && npm start"
   },
