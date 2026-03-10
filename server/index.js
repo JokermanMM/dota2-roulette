@@ -27,6 +27,7 @@ initDB();
 
 app.use('/api/auth', authRoutes);
 app.use('/api/history', historyRoutes);
+app.get('/api/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '..', 'client', 'dist');
