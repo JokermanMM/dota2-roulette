@@ -1,5 +1,6 @@
 import { navigateTo } from '../router.js';
 import { ROLES } from '../data/combos.js';
+import { currentUsername } from './auth.js';
 
 // Shared state
 export const setupState = {
@@ -18,6 +19,14 @@ export function renderSetup(container) {
 
   const page = document.createElement('div');
   page.className = 'setup-page';
+
+  // Auto-fill Player 1 with login username
+  if (setupState.players.length === 0 || !setupState.players[0]?.nickname) {
+    setupState.players = [];
+    for (let i = 0; i < 5; i++) {
+      setupState.players.push({ nickname: i === 0 ? currentUsername : '', role: 'auto' });
+    }
+  }
 
   page.innerHTML = `
     <h1 class="page__title">Настройка пати</h1>
@@ -71,6 +80,9 @@ export function renderSetup(container) {
       </div>
     </div>
 
+    <!-- Validation message -->
+    <div id="validationMsg" style="text-align: center; color: var(--accent-red); font-size: 0.95rem; margin-bottom: var(--space-md); display: none;"></div>
+
     <!-- GO Button -->
     <div class="spin-btn-container">
       <button class="btn btn--gold btn--large" id="spinBtn">
@@ -87,22 +99,22 @@ export function renderSetup(container) {
 
   function updatePlayerRows() {
     playersGrid.innerHTML = '';
-    // Ensure players array matches count
-    while (setupState.players.length < setupState.playerCount) {
-      setupState.players.push({ nickname: '', role: 'auto' });
-    }
-    setupState.players.length = setupState.playerCount;
 
     for (let i = 0; i < setupState.playerCount; i++) {
+      if (!setupState.players[i]) {
+        setupState.players[i] = { nickname: '', role: 'auto' };
+      }
+
       const row = document.createElement('div');
       row.className = 'player-row';
       row.style.animationDelay = `${i * 0.1}s`;
 
+      const isP1 = i === 0;
       row.innerHTML = `
         <div class="player-row__number">P${i + 1}</div>
         <input type="text" class="input-field" placeholder="Никнейм игрока ${i + 1}" 
                value="${setupState.players[i].nickname}" data-idx="${i}" data-field="nickname" 
-               maxlength="25" autocomplete="off" />
+               maxlength="25" autocomplete="off" ${isP1 ? 'style="border-color: var(--accent-teal); opacity: 0.85;"' : ''} />
         <select class="input-field" data-idx="${i}" data-field="role">
           <option value="auto" ${setupState.players[i].role === 'auto' ? 'selected' : ''}>🎲 Авто</option>
           ${ROLES.map(r => `
@@ -118,16 +130,15 @@ export function renderSetup(container) {
 
     // Bind inputs
     playersGrid.querySelectorAll('input, select').forEach(el => {
-      el.addEventListener('change', () => {
+      const handler = () => {
         const idx = parseInt(el.dataset.idx);
         const field = el.dataset.field;
         setupState.players[idx][field] = el.value;
-      });
-      el.addEventListener('input', () => {
-        const idx = parseInt(el.dataset.idx);
-        const field = el.dataset.field;
-        setupState.players[idx][field] = el.value;
-      });
+        // Hide validation message when user types
+        page.querySelector('#validationMsg').style.display = 'none';
+      };
+      el.addEventListener('change', handler);
+      el.addEventListener('input', handler);
     });
   }
 
@@ -154,25 +165,45 @@ export function renderSetup(container) {
 
   // Spin button
   page.querySelector('#spinBtn').addEventListener('click', () => {
-    // Validate: at least nicknames filled
-    let valid = true;
+    const validationMsg = page.querySelector('#validationMsg');
+
+    // Validate all nicknames are filled
+    const emptyNicks = [];
     for (let i = 0; i < setupState.playerCount; i++) {
       if (!setupState.players[i].nickname.trim()) {
-        setupState.players[i].nickname = `Игрок ${i + 1}`;
+        emptyNicks.push(i + 1);
       }
+    }
+
+    if (emptyNicks.length > 0) {
+      validationMsg.textContent = `⚠️ Введи никнейм для ${emptyNicks.length > 1 ? 'игроков' : 'игрока'} ${emptyNicks.join(', ')} или измени количество игроков!`;
+      validationMsg.style.display = 'block';
+      validationMsg.style.animation = 'none';
+      validationMsg.offsetHeight;
+      validationMsg.style.animation = 'fadeSlideUp 0.3s ease';
+      // Highlight empty fields
+      playersGrid.querySelectorAll('input[data-field="nickname"]').forEach(input => {
+        const idx = parseInt(input.dataset.idx);
+        if (emptyNicks.includes(idx + 1)) {
+          input.style.borderColor = 'var(--accent-red)';
+          input.style.boxShadow = '0 0 0 3px var(--accent-red-glow)';
+        }
+      });
+      return;
     }
 
     // Check for duplicate manual roles
     const manualRoles = setupState.players
+      .slice(0, setupState.playerCount)
       .filter(p => p.role !== 'auto')
       .map(p => p.role);
     const uniqueRoles = new Set(manualRoles);
     if (uniqueRoles.size !== manualRoles.length) {
-      alert('Два игрока не могут играть на одной и той же роли!');
+      validationMsg.textContent = '⚠️ Два игрока не могут играть на одной и той же роли!';
+      validationMsg.style.display = 'block';
       return;
     }
 
-    // Navigate to roulette
     navigateTo('/roulette');
   });
 }

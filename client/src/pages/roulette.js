@@ -9,15 +9,18 @@ export const rollResults = {
   players: [],
   roles: [],
   heroes: [],
-  mode: ''
+  mode: '',
+  comboDescription: ''
 };
+
+// Track last roll to prevent duplicates
+let lastRollHeroes = [];
 
 function assignRoles(players) {
   const allRoles = ROLES.map(r => r.id);
   const assigned = [];
   const takenRoles = [];
 
-  // First pass: assign manual roles
   players.forEach((p, i) => {
     if (p.role !== 'auto') {
       assigned[i] = p.role;
@@ -25,7 +28,6 @@ function assignRoles(players) {
     }
   });
 
-  // Second pass: auto-assign remaining roles
   const availableRoles = allRoles.filter(r => !takenRoles.includes(r));
   const shuffledAvailable = [...availableRoles].sort(() => Math.random() - 0.5);
 
@@ -41,119 +43,126 @@ function assignRoles(players) {
 }
 
 function selectHeroes(roles, mode) {
-  const chosen = [];
+  const MAX_ATTEMPTS = 10;
+  let heroes;
+  let description = '';
 
-  if (mode === 'lane') {
-    return selectLaneHeroes(roles, chosen);
-  } else if (mode === 'fun') {
-    return selectFunHeroes(roles, chosen);
-  } else {
-    return selectMetaHeroes(roles, chosen);
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    let result;
+    if (mode === 'lane') {
+      result = selectLaneHeroes(roles);
+    } else if (mode === 'fun') {
+      result = selectFunHeroes(roles);
+    } else {
+      result = selectMetaHeroes(roles);
+    }
+    heroes = result.heroes;
+    description = result.description;
+
+    // Check for duplicate roll
+    const currentNames = heroes.map(h => h.name).sort().join(',');
+    const lastNames = lastRollHeroes.sort().join(',');
+    if (currentNames !== lastNames || lastRollHeroes.length === 0) {
+      break;
+    }
   }
+
+  lastRollHeroes = heroes.map(h => h.name);
+  return { heroes, description };
 }
 
 function selectLaneHeroes(roles) {
   const chosen = [];
   const usedHeroes = new Set();
+  const descriptions = [];
 
-  // Try to find lane combos that match assigned roles
   for (let i = 0; i < roles.length; i++) {
     if (chosen[i]) continue;
-
     const role = roles[i];
-    // Look for a combo partner
+
     for (let j = i + 1; j < roles.length; j++) {
       if (chosen[j]) continue;
 
-      const combo = LANE_COMBOS.find(c => {
+      const combos = LANE_COMBOS.filter(c => {
         const h0 = HEROES.find(h => h.name === c.heroes[0]);
         const h1 = HEROES.find(h => h.name === c.heroes[1]);
         if (!h0 || !h1) return false;
         if (usedHeroes.has(h0.name) || usedHeroes.has(h1.name)) return false;
-
         return (h0.roles.includes(role) && h1.roles.includes(roles[j])) ||
                (h1.roles.includes(role) && h0.roles.includes(roles[j]));
       });
 
-      if (combo) {
+      if (combos.length > 0) {
+        const combo = combos[Math.floor(Math.random() * combos.length)];
         const h0 = HEROES.find(h => h.name === combo.heroes[0]);
         const h1 = HEROES.find(h => h.name === combo.heroes[1]);
 
         if (h0.roles.includes(role)) {
-          chosen[i] = h0;
-          chosen[j] = h1;
+          chosen[i] = h0; chosen[j] = h1;
         } else {
-          chosen[i] = h1;
-          chosen[j] = h0;
+          chosen[i] = h1; chosen[j] = h0;
         }
-        usedHeroes.add(h0.name);
-        usedHeroes.add(h1.name);
+        usedHeroes.add(h0.name); usedHeroes.add(h1.name);
+        descriptions.push(combo.desc);
         break;
       }
     }
   }
 
-  // Fill remaining with role-appropriate heroes
   for (let i = 0; i < roles.length; i++) {
     if (!chosen[i]) {
       const candidates = getHeroesByRole(roles[i]).filter(h => !usedHeroes.has(h.name));
-      if (candidates.length > 0) {
-        const pick = candidates[Math.floor(Math.random() * candidates.length)];
-        chosen[i] = pick;
-        usedHeroes.add(pick.name);
-      } else {
-        // Fallback: any hero
-        const fallback = HEROES.filter(h => !usedHeroes.has(h.name));
-        const pick = fallback[Math.floor(Math.random() * fallback.length)];
-        chosen[i] = pick;
-        usedHeroes.add(pick.name);
-      }
+      const pick = candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)]
+        : HEROES.filter(h => !usedHeroes.has(h.name))[0];
+      chosen[i] = pick;
+      usedHeroes.add(pick.name);
     }
   }
 
-  return chosen;
+  const desc = descriptions.length > 0
+    ? `🛡️ Лейн-связки: ${descriptions.join(' | ')}`
+    : '🛡️ Герои подобраны по ролям для сильных линий';
+
+  return { heroes: chosen, description: desc };
 }
 
 function selectFunHeroes(roles) {
   const chosen = [];
   const usedHeroes = new Set();
+  const descriptions = [];
 
-  // Try to match fun combos
   for (let i = 0; i < roles.length; i++) {
     if (chosen[i]) continue;
-
     for (let j = i + 1; j < roles.length; j++) {
       if (chosen[j]) continue;
 
-      const combo = FUN_COMBOS.find(c => {
+      const combos = FUN_COMBOS.filter(c => {
         const h0 = HEROES.find(h => h.name === c.heroes[0]);
         const h1 = HEROES.find(h => h.name === c.heroes[1]);
         if (!h0 || !h1) return false;
         if (usedHeroes.has(h0.name) || usedHeroes.has(h1.name)) return false;
-
         return (h0.roles.includes(roles[i]) && h1.roles.includes(roles[j])) ||
                (h1.roles.includes(roles[i]) && h0.roles.includes(roles[j]));
       });
 
-      if (combo) {
+      if (combos.length > 0) {
+        const combo = combos[Math.floor(Math.random() * combos.length)];
         const h0 = HEROES.find(h => h.name === combo.heroes[0]);
         const h1 = HEROES.find(h => h.name === combo.heroes[1]);
 
         if (h0.roles.includes(roles[i])) {
-          chosen[i] = h0;
-          chosen[j] = h1;
+          chosen[i] = h0; chosen[j] = h1;
         } else {
-          chosen[i] = h1;
-          chosen[j] = h0;
+          chosen[i] = h1; chosen[j] = h0;
         }
-        usedHeroes.add(h0.name);
-        usedHeroes.add(h1.name);
+        usedHeroes.add(h0.name); usedHeroes.add(h1.name);
+        descriptions.push(combo.desc);
         break;
       }
     }
   }
 
-  // Fill remaining with random picks from role pool
   for (let i = 0; i < roles.length; i++) {
     if (!chosen[i]) {
       const candidates = getHeroesByRole(roles[i]).filter(h => !usedHeroes.has(h.name));
@@ -164,12 +173,17 @@ function selectFunHeroes(roles) {
     }
   }
 
-  return chosen;
+  const desc = descriptions.length > 0
+    ? `🎉 Фан-комбо: ${descriptions.join(' | ')}`
+    : '🎉 Весёлые герои для развлечения в пати';
+
+  return { heroes: chosen, description: desc };
 }
 
 function selectMetaHeroes(roles) {
   const chosen = [];
   const usedHeroes = new Set();
+  const reasons = [];
 
   for (let i = 0; i < roles.length; i++) {
     const role = roles[i];
@@ -177,7 +191,6 @@ function selectMetaHeroes(roles) {
     const available = metaPool.filter(m => !usedHeroes.has(m.name));
 
     if (available.length > 0) {
-      // Weighted random: S tier heroes 3x more likely
       const weighted = [];
       available.forEach(m => {
         const weight = m.tier === 'S' ? 3 : 1;
@@ -187,8 +200,8 @@ function selectMetaHeroes(roles) {
       const hero = HEROES.find(h => h.name === pick.name);
       chosen[i] = hero;
       usedHeroes.add(pick.name);
+      reasons.push(`${hero.locName}: ${pick.reason}`);
     } else {
-      // Fallback to role heroes with high tier
       const candidates = getHeroesByRole(role)
         .filter(h => !usedHeroes.has(h.name) && ['S', 'A'].includes(h.tier));
       const fallback = candidates.length > 0 ? candidates : getHeroesByRole(role).filter(h => !usedHeroes.has(h.name));
@@ -198,13 +211,69 @@ function selectMetaHeroes(roles) {
     }
   }
 
-  return chosen;
+  const desc = reasons.length > 0
+    ? `🏆 Мета-пики: ${reasons.join(' | ')}`
+    : '🏆 Сильнейшие герои текущего патча';
+
+  return { heroes: chosen, description: desc };
+}
+
+// Smart reroll: pick a hero that synergizes with remaining team
+export function smartRerollHero(indexToReroll, currentHeroes, roles, mode) {
+  const usedNames = currentHeroes.filter((_, i) => i !== indexToReroll).map(h => h.name);
+  const role = roles[indexToReroll];
+  const teammates = currentHeroes.filter((_, i) => i !== indexToReroll);
+  const teammateNames = teammates.map(h => h.name);
+
+  // Try to find a combo partner with any teammate
+  const allCombos = mode === 'fun' ? FUN_COMBOS : LANE_COMBOS;
+  const matchingCombos = allCombos.filter(c => {
+    return c.heroes.some(hName => teammateNames.includes(hName)) &&
+           c.heroes.some(hName => {
+             const hero = HEROES.find(h => h.name === hName);
+             return hero && !usedNames.includes(hName) && hero.name !== currentHeroes[indexToReroll]?.name &&
+                    hero.roles.includes(role);
+           });
+  });
+
+  if (matchingCombos.length > 0) {
+    const combo = matchingCombos[Math.floor(Math.random() * matchingCombos.length)];
+    const newHeroName = combo.heroes.find(hName => {
+      const hero = HEROES.find(h => h.name === hName);
+      return hero && !usedNames.includes(hName) && hero.roles.includes(role) &&
+             hero.name !== currentHeroes[indexToReroll]?.name;
+    });
+    if (newHeroName) {
+      return { hero: HEROES.find(h => h.name === newHeroName), comboDesc: combo.desc || combo.reason };
+    }
+  }
+
+  // For meta mode, pick from meta pool
+  if (mode === 'meta') {
+    const metaPool = (META_PICKS[role] || META_PICKS.support)
+      .filter(m => !usedNames.includes(m.name) && m.name !== currentHeroes[indexToReroll]?.name);
+    if (metaPool.length > 0) {
+      const pick = metaPool[Math.floor(Math.random() * metaPool.length)];
+      const hero = HEROES.find(h => h.name === pick.name);
+      return { hero, comboDesc: pick.reason };
+    }
+  }
+
+  // Fallback: random from role
+  const candidates = getHeroesByRole(role).filter(h =>
+    !usedNames.includes(h.name) && h.name !== currentHeroes[indexToReroll]?.name
+  );
+  if (candidates.length > 0) {
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    return { hero: pick, comboDesc: null };
+  }
+
+  return { hero: currentHeroes[indexToReroll], comboDesc: null };
 }
 
 export async function renderRoulette(container) {
   container.innerHTML = '';
 
-  // Ensure we have setup data
   if (!setupState.players.length) {
     navigateTo('/setup');
     return;
@@ -214,22 +283,19 @@ export async function renderRoulette(container) {
   page.className = 'roulette-page';
   container.appendChild(page);
 
-  // Calculate roles and heroes
-  const roles = assignRoles(setupState.players);
-  const heroes = selectHeroes(roles, setupState.mode);
+  const roles = assignRoles(setupState.players.slice(0, setupState.playerCount));
+  const { heroes, description } = selectHeroes(roles, setupState.mode);
 
-  // Save to results
-  rollResults.players = setupState.players.map(p => p.nickname);
+  rollResults.players = setupState.players.slice(0, setupState.playerCount).map(p => p.nickname);
   rollResults.roles = roles;
   rollResults.heroes = heroes;
   rollResults.mode = setupState.mode;
+  rollResults.comboDescription = description;
 
-  // Sequential spin animation
   for (let i = 0; i < setupState.playerCount; i++) {
-    await spinForPlayer(page, i, setupState.players[i].nickname, roles[i], heroes[i]);
+    await spinForPlayer(page, i, rollResults.players[i], roles[i], heroes[i]);
   }
 
-  // All done — show summary and navigate
   page.innerHTML = `
     <div class="roulette-complete-card glass-card" style="animation: scaleIn 0.5s ease">
       <h2 style="font-family: var(--font-display); color: var(--accent-gold); font-size: 2rem;">
@@ -247,7 +313,6 @@ export async function renderRoulette(container) {
 function spinForPlayer(page, index, nickname, role, hero) {
   return new Promise(resolve => {
     page.innerHTML = '';
-
     const roleInfo = getRoleById(role);
 
     const label = document.createElement('div');
@@ -266,14 +331,12 @@ function spinForPlayer(page, index, nickname, role, hero) {
     spinnerEl.style.animation = 'scaleIn 0.3s ease';
     page.appendChild(spinnerEl);
 
-    // Duration decreases slightly for each player for excitement
     const duration = 3500 + index * 300;
 
     const spinner = new HeroSpinner(spinnerEl, {
       targetHero: hero,
-      duration: duration,
+      duration,
       onComplete: () => {
-        // Show the selected hero briefly
         const reveal = document.createElement('div');
         reveal.className = 'roulette-complete-card';
         reveal.innerHTML = `
@@ -283,12 +346,10 @@ function spinForPlayer(page, index, nickname, role, hero) {
           <p>${roleInfo?.icon || ''} ${roleInfo?.nameRu || role}</p>
         `;
         page.appendChild(reveal);
-
         setTimeout(resolve, 1200);
       }
     });
 
-    // Start spinning after a short delay
     setTimeout(() => spinner.spin(), 500);
   });
 }

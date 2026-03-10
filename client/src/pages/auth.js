@@ -2,6 +2,9 @@ import { api } from '../utils/api.js';
 import { navigateTo } from '../router.js';
 import { createParticles } from '../components/particles.js';
 
+// Store username globally so setup page can use it as Player 1
+export let currentUsername = '';
+
 export function renderAuth(container) {
   container.className = 'auth-page';
 
@@ -15,8 +18,6 @@ export function renderAuth(container) {
   const card = document.createElement('div');
   card.className = 'auth-card glass-card';
 
-  let selectedProvider = 'steam';
-
   card.innerHTML = `
     <div class="auth-card__logo">
       <span class="logo-dota">Dota</span><span class="logo-roulette">Roulette</span>
@@ -24,21 +25,6 @@ export function renderAuth(container) {
     <p class="auth-card__tagline">🎰 Крути рулетку — выбирай героев для пати!</p>
 
     <div class="auth-card__form">
-      <div class="auth-providers" id="providers">
-        <button class="auth-provider-btn auth-provider-btn--active" data-provider="steam">
-          <span class="provider-icon">🎮</span> Steam
-        </button>
-        <button class="auth-provider-btn" data-provider="discord">
-          <span class="provider-icon">💬</span> Discord
-        </button>
-        <button class="auth-provider-btn" data-provider="telegram">
-          <span class="provider-icon">✈️</span> Telegram
-        </button>
-        <button class="auth-provider-btn" data-provider="dotabuff">
-          <span class="provider-icon">📊</span> Dotabuff
-        </button>
-      </div>
-
       <input type="text" class="input-field" id="usernameInput" 
              placeholder="Введи свой никнейм..." maxlength="30" autocomplete="off" />
       
@@ -48,21 +34,11 @@ export function renderAuth(container) {
     </div>
 
     <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: var(--space-md);">
-      Демо-режим: просто введи никнейм и выбери провайдер
+      Никнейм будет автоматически использован как Игрок 1
     </p>
   `;
 
   container.appendChild(card);
-
-  // Provider selection
-  const providers = card.querySelector('#providers');
-  providers.addEventListener('click', (e) => {
-    const btn = e.target.closest('.auth-provider-btn');
-    if (!btn) return;
-    providers.querySelectorAll('.auth-provider-btn').forEach(b => b.classList.remove('auth-provider-btn--active'));
-    btn.classList.add('auth-provider-btn--active');
-    selectedProvider = btn.dataset.provider;
-  });
 
   // Login
   const loginBtn = card.querySelector('#loginBtn');
@@ -72,6 +48,7 @@ export function renderAuth(container) {
     const username = usernameInput.value.trim();
     if (username.length < 2) {
       usernameInput.style.borderColor = 'var(--accent-red)';
+      usernameInput.setAttribute('placeholder', 'Минимум 2 символа!');
       usernameInput.focus();
       return;
     }
@@ -80,7 +57,8 @@ export function renderAuth(container) {
     loginBtn.textContent = '⏳ Подключение...';
 
     try {
-      await api.login(username, selectedProvider);
+      await api.login(username, 'demo');
+      currentUsername = username;
       navigateTo('/setup');
     } catch (err) {
       loginBtn.disabled = false;
