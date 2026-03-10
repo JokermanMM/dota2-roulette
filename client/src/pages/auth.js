@@ -32,10 +32,6 @@ export function renderAuth(container) {
         ⚡ Войти и крутить
       </button>
     </div>
-
-    <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: var(--space-md);">
-      Никнейм будет автоматически использован как Игрок 1
-    </p>
   `;
 
   container.appendChild(card);
